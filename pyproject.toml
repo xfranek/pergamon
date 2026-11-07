@@ -6,10 +6,13 @@ requires-python = ">=3.11"
 dependencies = [
     "camoufox[geoip]>=0.4",
     "curl_cffi>=0.7",
+    "starlette>=0.40",
+    "uvicorn>=0.30",
 ]
 
 [project.scripts]
 aapi-session = "aapi.session:main"
+aapi = "aapi.api:main"
 
 [build-system]
 requires = ["hatchling"]
