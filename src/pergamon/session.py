@@ -14,8 +14,8 @@ from pathlib import Path
 
 from curl_cffi import requests
 
-DOMAIN = os.environ.get("AAPI_DOMAIN", "annas-archive.gl")
-STATE = Path(os.environ.get("AAPI_STATE", Path.home() / ".cache" / "aapi" / "session.json"))
+DOMAIN = os.environ.get("PERGAMON_DOMAIN", "annas-archive.gl")
+STATE = Path(os.environ.get("PERGAMON_STATE", Path.home() / ".cache" / "pergamon" / "session.json"))
 REFRESH_MARGIN = 5 * 60  # re-solve when the shortest cookie has < 5 min left
 PROBE = "/search?q=test"
 

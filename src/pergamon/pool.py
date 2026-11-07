@@ -1,18 +1,18 @@
 """DDoS-Guard sessions spread over mullid exit identities.
 
 __ddg9_ carries the IP that solved the challenge, so a session only works through
-the exit that minted it. Each exit `aapi<i>` is a sticky mullid profile with its
+the exit that minted it. Each exit `pergamon<i>` is a sticky mullid profile with its
 own cookie file. Requests go to exits that hold a valid session and are not busy
 minting; the others mint in the background. A refused session is re-minted on the
 same exit; if minting fails there, the exit is rotated to a fresh relay.
 
-    AAPI_MULLID=http://127.0.0.1:8888            mullid proxy (unset = direct, one exit)
-    AAPI_MULLID_CONTROL=http://127.0.0.1:8889    mullid control API
-    AAPI_POOL=4                                  number of exits
+    PERGAMON_MULLID=http://127.0.0.1:8888            mullid proxy (unset = direct, one exit)
+    PERGAMON_MULLID_CONTROL=http://127.0.0.1:8889    mullid control API
+    PERGAMON_POOL=4                                  number of exits
 
-    aapi-session            # mint every exit that needs it
-    aapi-session --force    # re-mint every exit
-    aapi-session --check    # only verify cached sessions
+    pergamon-session            # mint every exit that needs it
+    pergamon-session --force    # re-mint every exit
+    pergamon-session --check    # only verify cached sessions
 """
 
 import argparse
@@ -21,7 +21,9 @@ import os
 import sys
 import threading
 import time
+from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -29,11 +31,21 @@ from curl_cffi import requests
 
 from . import session
 
-MULLID = os.environ.get("AAPI_MULLID", "")
-CONTROL = os.environ.get("AAPI_MULLID_CONTROL", "http://127.0.0.1:8889")
-SIZE = int(os.environ.get("AAPI_POOL", 4)) if MULLID else 1
+MULLID = os.environ.get("PERGAMON_MULLID", "")
+CONTROL = os.environ.get("PERGAMON_MULLID_CONTROL", "http://127.0.0.1:8889")
+SIZE = int(os.environ.get("PERGAMON_POOL", 4)) if MULLID else 1
 MINT_ATTEMPTS = 2  # same exit once, then a rotated one
 WARM_BACKOFF = 5 * 60  # after a failed background mint, leave the exit alone this long
+# Anna's answers 429 above ~20 searches/min per IP (calibrated 2026-11-08: 18.9/min held
+# for 150s, 22.5/min hit 429 in 20s). One in flight, 4s apart = 15/min, 75% of the limit.
+MAX_INFLIGHT = int(os.environ.get("PERGAMON_INFLIGHT", 1))
+GAP = float(os.environ.get("PERGAMON_GAP", 4.0))         # min seconds between request starts per exit
+COOLDOWN = 60.0                                          # exit rests this long after a 429
+QUEUE_TIMEOUT = float(os.environ.get("PERGAMON_QUEUE_TIMEOUT", 60))
+
+
+class Busy(Exception):
+    """No exit freed up within QUEUE_TIMEOUT."""
 
 
 class Exit:
@@ -41,6 +53,8 @@ class Exit:
         self.name = name
         self.lock = threading.Lock()  # one mint at a time per exit; other exits stay usable
         self.failed_at = 0.0
+        self.inflight = 0      # guarded by _cv
+        self.next_at = 0.0     # earliest start of the next request, guarded by _cv
         if MULLID:
             u = urlsplit(MULLID)
             url = f"{u.scheme}://{name}:x@{u.netloc}"  # mullid: profile = proxy username
@@ -76,6 +90,9 @@ class Exit:
             self.session()
         except RuntimeError:
             self.failed_at = time.time()  # stays not-ready until the backoff passes
+        finally:
+            with _cv:
+                _cv.notify_all()  # queued requests may now use this exit
 
     def _mint(self) -> dict:
         error: Exception | None = None
@@ -103,11 +120,45 @@ class Exit:
             return False, 0
         return session.works(s, self.proxies), int(s["expires_at"] - time.time())
 
+    def cool(self, seconds: float = COOLDOWN) -> None:
+        """Rate-limited (429): the session is fine, the IP just needs a rest."""
+        with _cv:
+            self.next_at = max(self.next_at, time.time() + seconds)
+
 
 # mullid reads a "-xx" suffix as a country pin, so exit names carry no dash
-EXITS = [Exit(f"aapi{i}" if MULLID else "direct") for i in range(SIZE)]
+EXITS = [Exit(f"pergamon{i}" if MULLID else "direct") for i in range(SIZE)]
 _turn = itertools.cycle(range(SIZE))
 _turn_lock = threading.Lock()
+_cv = threading.Condition()  # guards Exit.inflight/next_at; signalled when a slot or session frees up
+
+
+@contextmanager
+def lease(exclude: Exit | None = None) -> Iterator[Exit]:
+    """Hold a slot on a ready exit for one request, queueing until one is free.
+
+    Respects MAX_INFLIGHT and GAP per exit; raises Busy after QUEUE_TIMEOUT."""
+    deadline = time.time() + QUEUE_TIMEOUT
+    with _cv:
+        while True:
+            now = time.time()
+            candidates = [ex for ex in exits() if ex is not exclude and ex.ready and ex.inflight < MAX_INFLIGHT]
+            if free := [ex for ex in candidates if ex.next_at <= now]:
+                ex = free[0]
+                ex.inflight += 1
+                ex.next_at = now + GAP
+                break
+            if now >= deadline:
+                raise Busy(f"all {SIZE} exits busy for {QUEUE_TIMEOUT:.0f}s")
+            # wake when the soonest paced exit opens, a slot frees, or a mint lands
+            soonest = min((ex.next_at for ex in candidates), default=now + 1)
+            _cv.wait(min(deadline, soonest) - now)
+    try:
+        yield ex
+    finally:
+        with _cv:
+            ex.inflight -= 1
+            _cv.notify()
 
 
 def exits() -> list[Exit]:

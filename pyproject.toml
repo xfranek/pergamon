@@ -1,5 +1,5 @@
 [project]
-name = "aapi"
+name = "pergamon"
 version = "0.1.0"
 description = "Curl-friendly API over Anna's Archive: best-hit PDF in one request"
 requires-python = ">=3.11"
@@ -11,8 +11,8 @@ dependencies = [
 ]
 
 [project.scripts]
-aapi-session = "aapi.pool:main"
-aapi = "aapi.api:main"
+pergamon-session = "pergamon.pool:main"
+pergamon = "pergamon.api:main"
 
 [build-system]
 requires = ["hatchling"]

@@ -1,4 +1,4 @@
-"""aapi - Anna's Archive over curl.
+"""pergamon - Anna's Archive over curl.
 
     curl -OJ localhost:8742/sovereign+individual         best PDF
     curl -OJ localhost:8742/sovereign+individual.epub    best EPUB  (.pdf .epub .mobi .djvu .azw3)
@@ -17,7 +17,7 @@ from starlette.applications import Starlette
 from starlette.responses import JSONResponse, PlainTextResponse, Response, StreamingResponse
 from starlette.routing import Route
 
-from . import sources
+from . import pool, sources
 from .search import TYPES, Hit, search
 
 
@@ -88,6 +88,10 @@ def by_md5(req):
     return _send(sources.open_file(md5), {"Content-Disposition": f"attachment; filename={md5}"})
 
 
+async def busy(req, exc):
+    return PlainTextResponse(f"busy: {exc}\n", status_code=503, headers={"Retry-After": "30"})
+
+
 async def failed(req, exc):
     return PlainTextResponse(f"{type(exc).__name__}: {exc}\n", status_code=502)
 
@@ -97,11 +101,11 @@ app = Starlette(
         Route("/md5/{md5:str}", by_md5, methods=["GET", "HEAD"]),
         Route("/{path:path}", query, methods=["GET", "HEAD"]),
     ],
-    exception_handlers={Exception: failed},
+    exception_handlers={pool.Busy: busy, Exception: failed},
 )
 
 
 def main() -> None:
     import uvicorn
 
-    uvicorn.run(app, host=os.environ.get("AAPI_HOST", "127.0.0.1"), port=int(os.environ.get("AAPI_PORT", 8742)))
+    uvicorn.run(app, host=os.environ.get("PERGAMON_HOST", "127.0.0.1"), port=int(os.environ.get("PERGAMON_PORT", 8742)))

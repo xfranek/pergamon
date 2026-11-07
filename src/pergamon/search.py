@@ -44,13 +44,23 @@ FAILOVER = 2  # exits to try before giving up
 
 
 def _page(path: str) -> str:
-    errors = []
-    for ex in pool.exits()[:FAILOVER]:
-        try:
-            return _page_via(ex, path)
-        except (RuntimeError, ConnectionError, requests.RequestsError) as e:
-            errors.append(f"{ex.name}: {e}")
+    errors, failed = [], None
+    for _ in range(min(FAILOVER, pool.SIZE)):
+        with pool.lease(exclude=failed) as ex:  # queues; raises pool.Busy when saturated
+            try:
+                return _page_via(ex, path)
+            except RateLimited as e:
+                ex.cool()  # session stays; the exit just sits out the cooldown
+                errors.append(f"{ex.name}: {e}")
+                failed = ex
+            except (RuntimeError, ConnectionError, requests.RequestsError) as e:
+                errors.append(f"{ex.name}: {e}")
+                failed = ex
     raise ConnectionError("; ".join(errors))
+
+
+class RateLimited(ConnectionError):
+    """429 from Anna's: too many searches from this IP, session still valid."""
 
 
 def _page_via(ex: pool.Exit, path: str) -> str:
@@ -61,6 +71,8 @@ def _page_via(ex: pool.Exit, path: str) -> str:
             s = ex.session(refused=s["solved_at"])
         r = requests.get(f"https://{session.DOMAIN}{path}", cookies=s["cookies"],
                          impersonate="chrome", timeout=30, proxies=ex.proxies)
+        if r.status_code == 429:
+            raise RateLimited("429 rate limited")
         if r.status_code == 200 and "DDoS-Guard" not in r.text:
             return r.text
     raise ConnectionError(f"session refused ({r.status_code})")

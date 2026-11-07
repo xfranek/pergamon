@@ -15,7 +15,7 @@ from curl_cffi import requests
 from . import pool, session
 
 ANNAS_KEY = os.environ.get("ANNAS_KEY", "")
-LIBGEN = os.environ.get("AAPI_LIBGEN", "libgen.la,libgen.li,libgen.gl,libgen.bz").split(",")
+LIBGEN = os.environ.get("PERGAMON_LIBGEN", "libgen.la,libgen.li,libgen.gl,libgen.bz").split(",")
 
 Proxies = dict | None
 

@@ -7,25 +7,6 @@ resolution-markers = [
 ]
 
 [[package]]
-name = "aapi"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "camoufox", extra = ["geoip"] },
-    { name = "curl-cffi" },
-    { name = "starlette" },
-    { name = "uvicorn" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "camoufox", extras = ["geoip"], specifier = ">=0.4" },
-    { name = "curl-cffi", specifier = ">=0.7" },
-    { name = "starlette", specifier = ">=0.40" },
-    { name = "uvicorn", specifier = ">=0.30" },
-]
-
-[[package]]
 name = "ansicon"
 version = "1.89.0"
 source = { registry = "https://pypi.org/simple" }
@@ -997,6 +978,25 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/0a/2e/1c13552d8b0241083116de02b2f284ee38501ef06ebfb79893f741538168/orjson-3.13.0-cp315-cp315-musllinux_1_2_x86_64.whl", hash = "sha256:c5e3ccaac3106e8fa6e2f2f6962449d7c757d7b067e41b395a19d6f0d6cec892", size = 126711, upload-time = "2026-10-07T14:09:20.645Z" },
     { url = "https://files.pythonhosted.org/packages/85/f8/d4ece953a519d064cf690adaa68cd389d5b64fd261726334841b32978d6a/orjson-3.13.0-cp315-cp315-win_amd64.whl", hash = "sha256:7804dd1d6161da0e53b284c2aebf20f23e78eaac617300803e1467d1828d987f", size = 121496, upload-time = "2026-10-07T14:09:22.359Z" },
     { url = "https://files.pythonhosted.org/packages/70/cf/f691388c4a9bc4af7dcc1648c4b40845869908b517d7c0009d005c7d1fa1/orjson-3.13.0-cp315-cp315-win_arm64.whl", hash = "sha256:f5c05a8fee59309f537590a1ff12d3c1009c485e96a50a9ac60dd085c09d0fc0", size = 126260, upload-time = "2026-10-07T14:09:23.928Z" },
+]
+
+[[package]]
+name = "pergamon"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "camoufox", extra = ["geoip"] },
+    { name = "curl-cffi" },
+    { name = "starlette" },
+    { name = "uvicorn" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "camoufox", extras = ["geoip"], specifier = ">=0.4" },
+    { name = "curl-cffi", specifier = ">=0.7" },
+    { name = "starlette", specifier = ">=0.40" },
+    { name = "uvicorn", specifier = ">=0.30" },
 ]
 
 [[package]]
