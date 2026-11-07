@@ -11,7 +11,7 @@ dependencies = [
 ]
 
 [project.scripts]
-aapi-session = "aapi.session:main"
+aapi-session = "aapi.pool:main"
 aapi = "aapi.api:main"
 
 [build-system]

@@ -2,18 +2,15 @@
 
 import html
 import re
-import threading
 import unicodedata
 from dataclasses import asdict, dataclass, field
 from urllib.parse import urlencode
 
 from curl_cffi import requests
 
-from . import session
+from . import pool, session
 
 TYPES = {"pdf": 3, "epub": 2, "djvu": 1, "mobi": 1, "azw3": 1}  # value = preference when type is open
-
-_lock = threading.Lock()
 
 
 @dataclass
@@ -43,15 +40,30 @@ class Hit:
 
 # --- fetch -------------------------------------------------------------------
 
+FAILOVER = 2  # exits to try before giving up
+
+
 def _page(path: str) -> str:
-    for fresh in (False, True):  # cached cookies first; re-solve only if they're refused
-        with _lock:
-            s = session.get(force=True) if fresh else (session.load() or session.get())
-        cookies = s["cookies"]
-        r = requests.get(f"https://{session.DOMAIN}{path}", cookies=cookies, impersonate="chrome", timeout=30)
+    errors = []
+    for ex in pool.exits()[:FAILOVER]:
+        try:
+            return _page_via(ex, path)
+        except (RuntimeError, ConnectionError, requests.RequestsError) as e:
+            errors.append(f"{ex.name}: {e}")
+    raise ConnectionError("; ".join(errors))
+
+
+def _page_via(ex: pool.Exit, path: str) -> str:
+    # cookies only work through the exit that minted them
+    s = ex.session()
+    for retry in (False, True):
+        if retry:
+            s = ex.session(refused=s["solved_at"])
+        r = requests.get(f"https://{session.DOMAIN}{path}", cookies=s["cookies"],
+                         impersonate="chrome", timeout=30, proxies=ex.proxies)
         if r.status_code == 200 and "DDoS-Guard" not in r.text:
             return r.text
-    raise ConnectionError(f"Anna's Archive refused the session ({r.status_code})")
+    raise ConnectionError(f"session refused ({r.status_code})")
 
 
 # --- parse -------------------------------------------------------------------
@@ -113,8 +125,9 @@ def _mb(size: str) -> float:
 
 
 def _score(h: Hit, query: str, rank: int, lang: str) -> float:
-    q = _words(query)
-    s = 10 * len(q & _words(f"{h.title} {h.author}")) / max(len(q), 1)  # relevance
+    q, t = _words(query), _words(h.title)
+    s = 10 * len(q & (t | _words(h.author))) / max(len(q), 1)            # relevance: query covered
+    s += 4 * len(q & t) / max(len(t), 1)                                  # precision: title isn't mostly other words
     s += TYPES.get(h.ext, 0)                                              # format preference
     s += 2 * (h.lang == lang) + 0.3 * len(h.sources)                       # language, availability
     s -= 0.1 * rank                                                       # trust Anna's order a bit
