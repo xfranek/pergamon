@@ -1,9 +1,9 @@
 """pergamon - Anna's Archive over curl.
 
-    curl -OJ localhost:8742/sovereign+individual         best PDF
-    curl -OJ localhost:8742/sovereign+individual.epub    best EPUB  (.pdf .epub .mobi .djvu .azw3)
-    curl     localhost:8742/sovereign+individual.json    candidates, grouped by type
-    curl -I  localhost:8742/sovereign+individual.epub    what you'd get, without downloading
+    curl -OJ localhost:8742/pride+and+prejudice          best PDF
+    curl -OJ localhost:8742/pride+and+prejudice.epub     best EPUB  (.pdf .epub .mobi .djvu .azw3)
+    curl     localhost:8742/pride+and+prejudice.json     candidates, grouped by type
+    curl -I  localhost:8742/pride+and+prejudice.epub     what you'd get, without downloading
     curl -OJ localhost:8742/md5/<md5>                    one specific file
 
     ?lang=pl   language (default en, empty = any)
@@ -22,7 +22,7 @@ from .search import TYPES, Hit, search
 
 
 def _split(path: str) -> tuple[str, str]:
-    """'sovereign+individual.epub' -> ('sovereign individual', 'epub')"""
+    """'pride+and+prejudice.epub' -> ('sovereign individual', 'epub')"""
     stem, dot, ext = path.rpartition(".")
     if dot and (ext in TYPES or ext == "json"):
         path = stem
