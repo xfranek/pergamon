@@ -10,6 +10,7 @@
 """
 
 import os
+import unicodedata
 from urllib.parse import quote
 
 from starlette.applications import Starlette
@@ -30,9 +31,14 @@ def _split(path: str) -> tuple[str, str]:
     return path.replace("+", " ").strip(), ext
 
 
+def _ascii(s: str) -> str:
+    return unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode().replace('"', "")
+
+
 def _headers(h: Hit) -> dict:
     return {
-        "Content-Disposition": f"attachment; filename*=UTF-8''{quote(h.filename)}",
+        # curl -J only reads plain filename=; filename*= keeps non-ASCII for browsers
+        "Content-Disposition": f"attachment; filename=\"{_ascii(h.filename)}\"; filename*=UTF-8''{quote(h.filename)}",
         "X-AA-MD5": h.md5,
         "X-AA-Title": quote(h.title, safe=" ,:'"),
         "X-AA-Author": quote(h.author, safe=" ,:'"),
@@ -40,8 +46,7 @@ def _headers(h: Hit) -> dict:
     }
 
 
-def _send(md5: str, headers: dict) -> StreamingResponse:
-    r = sources.open_file(md5)
+def _send(r, headers: dict) -> StreamingResponse:
     if n := r.headers.get("content-length"):
         headers["Content-Length"] = n
 
@@ -71,17 +76,16 @@ def query(req):
         return PlainTextResponse(f"nothing for {q!r} as {ext}\n", status_code=404)
     if req.method == "HEAD":
         return Response(headers=_headers(hits[0]))
-    for h in hits:  # next candidate if every source fails for this one
-        try:
-            return _send(h.md5, _headers(h))
-        except FileNotFoundError:
-            continue
-    return PlainTextResponse(f"found {len(hits)} but no source serves them\n", status_code=502)
+    try:
+        md5, r = sources.open_any([h.md5 for h in hits])  # top 3 race; first served wins
+    except FileNotFoundError:
+        return PlainTextResponse(f"found {len(hits)} but no source serves them\n", status_code=502)
+    return _send(r, _headers(next(h for h in hits if h.md5 == md5)))
 
 
 def by_md5(req):
     md5 = req.path_params["md5"]
-    return _send(md5, {"Content-Disposition": f"attachment; filename={md5}"})
+    return _send(sources.open_file(md5), {"Content-Disposition": f"attachment; filename={md5}"})
 
 
 async def failed(req, exc):

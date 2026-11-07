@@ -4,6 +4,7 @@ import html
 import os
 import re
 from collections.abc import Callable, Iterator
+from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 
 from curl_cffi import requests
 
@@ -44,4 +45,24 @@ def open_file(md5: str) -> requests.Response:
             if r.status_code == 200 and not r.headers.get("content-type", "").startswith("text/html"):
                 return r
             r.close()
+            if r.status_code >= 500:
+                break  # Libgen mirrors share one backend: a 5xx on one means all of them
     raise FileNotFoundError(f"no source serves {md5}")
+
+
+def open_any(md5s: list[str]) -> tuple[str, requests.Response]:
+    """Race candidates; the first to serve a file wins, the rest are closed."""
+    pool = ThreadPoolExecutor(max_workers=len(md5s))
+    futures = {pool.submit(open_file, m): m for m in md5s}
+    winner = next((f for f in as_completed(futures) if f.exception() is None), None)
+    for f in futures.keys() - {winner}:
+        f.add_done_callback(_close)  # losers finishing later release their connection
+    pool.shutdown(wait=False)
+    if winner is None:
+        raise FileNotFoundError(f"none of {len(md5s)} candidates is served")
+    return futures[winner], winner.result()
+
+
+def _close(f: Future) -> None:
+    if f.exception() is None:
+        f.result().close()
