@@ -1,0 +1,16 @@
+[project]
+name = "aapi"
+version = "0.1.0"
+description = "Curl-friendly API over Anna's Archive: best-hit PDF in one request"
+requires-python = ">=3.11"
+dependencies = [
+    "camoufox[geoip]>=0.4",
+    "curl_cffi>=0.7",
+]
+
+[project.scripts]
+aapi-session = "aapi.session:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
